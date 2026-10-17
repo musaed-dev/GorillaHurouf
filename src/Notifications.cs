@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -6,6 +7,47 @@ namespace GorillaHurouf
 {
     /// <summary>Ready-made colours for <c>Arabic.Notify</c>.</summary>
     public enum NotifyKind { Info, Success, Warning, Error }
+
+    /// <summary>How notifications look and where they sit. Set these once from your mod (in <c>Awake</c>, say).
+    /// Position, Gap, MaxEntries, the fades and the colours of new notifications change at once; Scale, Width, FontSize and Font apply to notifications made after the change.</summary>
+    public static class NotificationSettings
+    {
+        /// <summary>Where the stack sits, in metres from the camera: x = right edge, y = top edge, z = distance. Default (0.55, 0.40, 1.4). Negative x moves it left of the view's centre.</summary>
+        public static Vector3 Position { get; set; } = new Vector3(0.55f, 0.40f, 1.4f);
+        /// <summary>Metres per text unit, so the size of the letters. Default 0.012.</summary>
+        public static float Scale { get; set; } = 0.012f;
+        /// <summary>How wide a line gets before it wraps, in text units. Default 80.</summary>
+        public static float Width { get; set; } = 80f;
+        /// <summary>Font size in text units. Default 36.</summary>
+        public static float FontSize { get; set; } = 36f;
+        /// <summary>Metres between two notifications. Default 0.012.</summary>
+        public static float Gap { get; set; } = 0.012f;
+        /// <summary>How many show at once; the oldest go first. Default 6.</summary>
+        public static int MaxEntries { get; set; } = 6;
+        /// <summary>Seconds to fade in and out. Defaults 0.15 and 0.6.</summary>
+        public static float FadeIn { get; set; } = 0.15f;
+        public static float FadeOut { get; set; } = 0.6f;
+        /// <summary>How long a notification stays when <c>Notify</c> is called without seconds. Default 4.</summary>
+        public static float DefaultSeconds { get; set; } = 4f;
+        /// <summary>Your own font for notifications. Null (default) uses the game's font, with the Arabic font behind it.</summary>
+        public static TMP_FontAsset Font { get; set; }
+        /// <summary>The colours of the four <see cref="NotifyKind"/> values.</summary>
+        public static Color InfoColor { get; set; } = Color.white;
+        public static Color SuccessColor { get; set; } = new Color(0.45f, 0.90f, 0.50f);
+        public static Color WarningColor { get; set; } = new Color(1.00f, 0.80f, 0.30f);
+        public static Color ErrorColor { get; set; } = new Color(1.00f, 0.40f, 0.40f);
+
+        internal static Color ColorOf(NotifyKind kind)
+        {
+            switch (kind)
+            {
+                case NotifyKind.Success: return SuccessColor;
+                case NotifyKind.Warning: return WarningColor;
+                case NotifyKind.Error: return ErrorColor;
+                default: return InfoColor;
+            }
+        }
+    }
 
     // Draws the notifications in front of the player's view. Arabic.Notify only queues a request; this component (one, on the plugin) shows it.
     class NotificationPanel : MonoBehaviour
@@ -21,14 +63,16 @@ namespace GorillaHurouf
             public float Born, Expires, Height;
         }
 
-        const int MaxEntries = 6;
-        const float FadeIn = 0.15f, FadeOut = 0.6f;
-        const float Width = 80f;     // in text units: how wide a line gets before it is wrapped
-        const float Scale = 0.012f;  // metres per text unit
-        const float Gap = 0.012f;    // metres between notifications
+        // the settings, kept safe to use (a zero width or fade would break the layout)
+        static int MaxEntries { get { return Mathf.Max(1, NotificationSettings.MaxEntries); } }
+        static float FadeIn { get { return Mathf.Max(0.01f, NotificationSettings.FadeIn); } }
+        static float FadeOut { get { return Mathf.Max(0.01f, NotificationSettings.FadeOut); } }
+        static float Width { get { return Mathf.Max(1f, NotificationSettings.Width); } }
+        static float Scale { get { return Mathf.Max(0.0001f, NotificationSettings.Scale); } }
+        static float Gap { get { return NotificationSettings.Gap; } }
+        static Vector3 Offset { get { return NotificationSettings.Position; } }
         // Layer 19 "FirstPersonOnly": the main camera draws it and the spectator ("Shoulder") camera does not (read from their culling masks).
         const int SpectatorHiddenLayer = 19;
-        static readonly Vector3 Offset = new Vector3(0.55f, 0.40f, 1.4f);   // right edge, top edge and distance from the camera
 
         static readonly List<Request> pending = new List<Request>();
 
@@ -45,15 +89,34 @@ namespace GorillaHurouf
             pending.Add(new Request { Text = text, Source = source, Color = color, Seconds = seconds });
         }
 
-        void Update()
+        /// <summary>True once a step threw: the error was logged (once) and the panel carries on with the next frame.</summary>
+        internal static bool Failed { get; private set; }
+
+        void Update() { try { Tick(); } catch (Exception e) { Fail("Update", e); } }
+        void LateUpdate() { try { Follow(); } catch (Exception e) { Fail("LateUpdate", e); } }
+
+        // Unity's own exception log does not reach LogOutput.log here, so a failure is logged once through ours instead of repeating silently every frame.
+        static void Fail(string where, Exception e)
+        {
+            if (Failed) return;
+            Failed = true;
+            Arabic.Log.LogError("Notifications failed in " + where + " (further errors are not logged): " + e);
+        }
+
+        void Tick()
         {
             float now = Time.unscaledTime;
             if (pending.Count > 0 && Camera.main != null)
             {
-                if (root == null) root = new GameObject("GorillaHurouf_Notifications");
+                if (root == null)
+                {
+                    root = new GameObject("GorillaHurouf_Notifications");
+                    DontDestroyOnLoad(root);   // the game loads and unloads scenes while it starts: a root left in one of them is destroyed with it
+                }
                 foreach (Request r in pending) Add(r, now);
                 pending.Clear();
             }
+            entries.RemoveAll(e => e.Tmp == null);   // texts something else destroyed: drop them, or every frame throws on them
             for (int i = entries.Count - 1; i >= 0; i--)
                 if (now >= entries[i].Expires) { Destroy(entries[i].Tmp.gameObject); entries.RemoveAt(i); }
             LiveCount = entries.Count;
@@ -68,7 +131,7 @@ namespace GorillaHurouf
             foreach (Transform t in text.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = layer;
         }
 
-        void LateUpdate()
+        void Follow()
         {
             Camera main = Camera.main;
             if (root == null || main == null) return;
@@ -98,9 +161,9 @@ namespace GorillaHurouf
             go.transform.SetParent(root.transform, false);
             go.transform.localScale = Vector3.one * Scale;
             var tmp = go.AddComponent<TextMeshPro>();
-            TMP_FontAsset font = Arabic.GameFont ?? Arabic.FontAsset;
+            TMP_FontAsset font = NotificationSettings.Font ?? Arabic.GameFont ?? Arabic.FontAsset;
             if (font != null) tmp.font = font;
-            tmp.fontSize = 36;
+            tmp.fontSize = NotificationSettings.FontSize;
             tmp.alignment = TextAlignmentOptions.TopRight;
             tmp.textWrappingMode = TextWrappingModes.NoWrap;   // lines are wrapped before shaping, not by TextMeshPro
             tmp.color = r.Color;
@@ -123,10 +186,10 @@ namespace GorillaHurouf
             bool arabic = Arabic.IsArabic(e.Text);
             if (arabic) Arabic.EnableFor(e.Tmp);
             // a "[Source]" in front must not turn an Arabic line left to right, so Arabic text is always laid out right to left
-            string wrapped = Arabic.Wrap(e.Tmp, text, Width, new ShapeOptions { Direction = arabic ? TextDirection.Rtl : TextDirection.Auto });
+            string wrapped = Arabic.Wrap(e.Tmp, text, Width, Arabic.DefaultWith(arabic ? TextDirection.Rtl : TextDirection.Auto));
             e.Tmp.text = wrapped;
             e.Tmp.ForceMeshUpdate();
-            e.Height = e.Tmp.GetRenderedValues(false).y * Scale;
+            e.Height = e.Tmp.GetRenderedValues(false).y * e.Tmp.transform.localScale.x;
             SetLayer(e.Tmp);   // after the mesh exists, so the fallback child meshes get the layer too
 #if HUROUF_DEMO
             Arabic.Log.LogInfo("notify: " + e.Text.Length + " chars x" + e.Count + " -> lines=" + wrapped.Split('\n').Length + " height=" + e.Height.ToString("0.000") + "m");

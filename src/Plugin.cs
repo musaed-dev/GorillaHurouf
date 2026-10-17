@@ -10,7 +10,9 @@ namespace GorillaHurouf
             Logger.LogInfo(PluginInfo.NAME + " " + PluginInfo.Version + " loaded");
             gameObject.AddComponent<NotificationPanel>();   // draws what Arabic.Notify queues; makes nothing until the first notification
             gameObject.AddComponent<MessageOfTheDay>();     // does nothing until Arabic.SetMessageOfTheDay is called
-#if HUROUF_DEMO
+#if HUROUF_VR
+            gameObject.AddComponent<Demo.VrDemo>();
+#elif HUROUF_DEMO
             gameObject.AddComponent<Demo>();
 #endif
         }

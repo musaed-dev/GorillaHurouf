@@ -6,10 +6,12 @@ using UnityEngine;
 
 namespace GorillaHurouf
 {
-    // Puts a mod's own text (Arabic or not) on the game's message-of-the-day board(s), in a colour. Local only: nothing is sent, other players see their own board.
+    // Puts a mod's own text (Arabic or not) on the game's message-of-the-day board(s), in a colour, and can change the heading above them too. Local only: nothing is
+    // sent, other players see their own board.
     // A board is the game's PlayFabTitleDataTextDisplay with the title-data key "MOTD". It writes its text and colour from the server's data at start, when the
     // language changes and when new data arrives, so this component looks at the boards every frame and puts the custom text back (and puts the game's text back
-    // when the custom one is cleared). The game's type is read by name and reflection: the library does not reference the game's own assembly, so a game update
+    // when the custom one is cleared). The heading is a separate text next to the board that the game's LocalizationTextSyncer rewrites on a language change: it is
+    // treated the same way. The game's types are read by name and reflection: the library does not reference the game's own assembly, so a game update
     // cannot break the build; at worst this feature finds no board (and says so once in the log).
     class MessageOfTheDay : MonoBehaviour
     {
@@ -27,11 +29,21 @@ namespace GorillaHurouf
             public bool ColorTaken;
             public int Version = -1;
             public float Width;
+            // the heading above the board
+            public TMP_Text Heading;
+            public bool HeadingLooked;
+            public string GameHeading, AppliedHeading;
+            public Color GameHeadingColor;
+            public bool HeadingColorTaken;
+            public int HeadingVersion = -1;
         }
 
         static string text;             // the custom text; null = leave the game's own
         static Color? color;
         static int version;             // bumped by every Set, so each board rebuilds its text
+        static string title;            // the custom heading; null = leave the game's own
+        static Color? titleColor;
+        static int titleVersion;
         static PropertyInfo keyProperty;
         static FieldInfo boxField;
         static MessageOfTheDay instance;
@@ -45,8 +57,22 @@ namespace GorillaHurouf
             text = string.IsNullOrEmpty(value) ? null : value;
             color = text == null ? null : tint;
             version++;
-            if (instance != null) instance.setTime = Time.unscaledTime;
-            if (instance != null) instance.nextScan = 0f;
+            Rescan();
+        }
+
+        internal static void SetTitle(string value, Color? tint)
+        {
+            title = string.IsNullOrEmpty(value) ? null : value;
+            titleColor = title == null ? null : tint;
+            titleVersion++;
+            Rescan();
+        }
+
+        static void Rescan()
+        {
+            if (instance == null) return;
+            instance.setTime = Time.unscaledTime;
+            instance.nextScan = 0f;
         }
 
         /// <summary>The boards being managed now (the demo reads them to check what was drawn).</summary>
@@ -60,6 +86,17 @@ namespace GorillaHurouf
             }
         }
 
+        /// <summary>The headings found so far (the demo reads them to check what was drawn).</summary>
+        internal static List<TMP_Text> Headings
+        {
+            get
+            {
+                var list = new List<TMP_Text>();
+                if (instance != null) foreach (Board b in instance.boards) if (b.Heading != null) list.Add(b.Heading);
+                return list;
+            }
+        }
+
         void Awake() { instance = this; }
 
         void OnDestroy()
@@ -69,10 +106,24 @@ namespace GorillaHurouf
             if (instance == this) instance = null;
         }
 
+        static bool failed;
+
+        // Unity's own exception log does not reach LogOutput.log here, so a failure is logged once through ours instead of repeating silently every frame.
         void LateUpdate()
         {
+            try { Tick(); }
+            catch (Exception e)
+            {
+                if (failed) return;
+                failed = true;
+                Arabic.Log.LogError("The message-of-the-day board failed (further errors are not logged): " + e);
+            }
+        }
+
+        void Tick()
+        {
             boards.RemoveAll(b => b.Box == null);
-            if (text == null)
+            if (text == null && title == null)
             {
                 foreach (Board b in boards) Restore(b);
                 boards.Clear();
@@ -90,7 +141,7 @@ namespace GorillaHurouf
                     Arabic.Log.LogWarning("No message-of-the-day board was found (looked for a " + BoardType + " with the key " + BoardKey + "); the game may have changed.");
                 }
             }
-            foreach (Board b in boards) Apply(b);
+            foreach (Board b in boards) { Apply(b); ApplyHeading(b); }
         }
 
         void Scan()
@@ -109,9 +160,27 @@ namespace GorillaHurouf
             }
         }
 
+        // The heading of a board. In the tree room it is a sibling called "...Heading..." (motdHeadingText); in the hidden ghost-reactor copies the board's text
+        // is a child of the heading. Null if neither is there.
+        static TMP_Text FindHeading(TMP_Text box)
+        {
+            Transform parent = box.transform.parent;
+            if (parent == null) return null;
+            TMP_Text own = parent.GetComponent<TMP_Text>();
+            if (own != null) return own;
+            foreach (Transform t in parent)
+            {
+                if (t == box.transform || t.name.IndexOf("motd", StringComparison.OrdinalIgnoreCase) < 0 || t.name.IndexOf("heading", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                TMP_Text h = t.GetComponent<TMP_Text>();
+                if (h != null) return h;
+            }
+            return null;
+        }
+
         void Apply(Board b)
         {
             TMP_Text box = b.Box;
+            if (text == null) { RestoreText(b); return; }
             string current = box.text;
             float width = Arabic.WrapWidth(box);
             if (b.Version != version || b.Width != width)
@@ -141,13 +210,63 @@ namespace GorillaHurouf
             else if (b.ColorTaken) { box.color = b.GameColor; b.ColorTaken = false; }
         }
 
-        static void Restore(Board b)
+        void ApplyHeading(Board b)
+        {
+            if (title == null) { RestoreHeading(b); return; }
+            if (b.Heading == null)
+            {
+                if (b.HeadingLooked) return;
+                b.HeadingLooked = true;
+                b.Heading = FindHeading(b.Box);
+                if (b.Heading == null) { Arabic.Log.LogWarning("No heading was found for a message-of-the-day board (" + b.Box.name + "); its title was not changed."); return; }
+            }
+            TMP_Text h = b.Heading;
+            string current = h.text;
+            if (b.HeadingVersion != titleVersion)
+            {
+                if (b.AppliedHeading == null || current != b.AppliedHeading) b.GameHeading = current;
+                if (Arabic.IsArabic(title))
+                {
+                    Arabic.EnableFor(h);
+                    b.AppliedHeading = Arabic.Render(h, title, 0f, false);
+                }
+                else b.AppliedHeading = title;
+                b.HeadingVersion = titleVersion;
+                h.text = b.AppliedHeading;
+            }
+            else if (current != b.AppliedHeading)   // the game's LocalizationTextSyncer wrote it again
+            {
+                b.GameHeading = current;
+                h.text = b.AppliedHeading;
+            }
+
+            if (titleColor.HasValue)
+            {
+                if (!b.HeadingColorTaken) { b.GameHeadingColor = h.color; b.HeadingColorTaken = true; }
+                if (h.color != titleColor.Value) h.color = titleColor.Value;
+            }
+            else if (b.HeadingColorTaken) { h.color = b.GameHeadingColor; b.HeadingColorTaken = false; }
+        }
+
+        static void Restore(Board b) { RestoreText(b); RestoreHeading(b); }
+
+        static void RestoreText(Board b)
         {
             if (b.Box == null || b.Applied == null) return;
             if (b.Box.text == b.Applied) b.Box.text = b.GameText;
             if (b.ColorTaken) b.Box.color = b.GameColor;
             b.Applied = null;
             b.ColorTaken = false;
+        }
+
+        static void RestoreHeading(Board b)
+        {
+            if (b.Heading == null || b.AppliedHeading == null) return;
+            if (b.Heading.text == b.AppliedHeading) b.Heading.text = b.GameHeading;
+            if (b.HeadingColorTaken) b.Heading.color = b.GameHeadingColor;
+            b.AppliedHeading = null;
+            b.HeadingColorTaken = false;
+            b.HeadingVersion = -1;
         }
     }
 }

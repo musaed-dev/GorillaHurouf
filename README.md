@@ -16,6 +16,7 @@ Gorilla Tag can't show Arabic right. The letters come out separate and backwards
 - **Message of the day.** Put your own Arabic text and colour on the game's message board.
 - **Translations.** Keep English and Arabic texts in a JSON file.
 - **Hijri date.** Show today's Hijri date in Arabic.
+- **Make it yours.** Move and resize the notifications, change their colours and timing, and choose how digits and marks are shown.
 
 It does nothing on its own. A mod has to use it.
 
@@ -24,7 +25,7 @@ It does nothing on its own. A mod has to use it.
 You only need this if a mod asks for it.
 
 1. Install [BepInEx 5](https://github.com/BepInEx/BepInEx/releases) for Gorilla Tag. Run the game once.
-2. Download `GorillaHurouf.dll` from the Releases page.
+2. Download `GorillaHurouf.dll` from the [latest release](https://github.com/musaed-dev/GorillaHurouf/releases/latest).
 3. Put it in `Gorilla Tag\BepInEx\plugins`.
 
 ## Use it in your mod
@@ -49,9 +50,12 @@ You don't need all of it. Find what you want to do:
 | Fix all text in the game | `Arabic.EnableAutoFix()` | One time, after the game starts. `Start` is a good place |
 | Tell the player something | `Arabic.Notify("...", NotifyKind.Success)` | Any time. It waits if the game is still loading |
 | Show your message on the message board | `Arabic.SetMessageOfTheDay("...", Color.green)` | Any time. `Arabic.ClearMessageOfTheDay()` puts the game's message back |
+| Change the title above the message board | `Arabic.SetMessageOfTheDayTitle("رسالة اليوم", Color.green)` | Any time. `Arabic.SetMessageOfTheDayTitle(null)` puts the game's title back |
 | Use English and Arabic texts | `var tr = Arabic.Translator("MyMod");` then `tr.T("key")` | Load your JSON file one time at the start. Then use `T` when you show a text |
 | Show the Hijri date | `Arabic.Hijri()` | When you build the text with the date |
 | Skip one text in auto-fix | `Arabic.SkipAutoFix(label)` | Right after you make the text |
+| Change how notifications look | `NotificationSettings.Position`, `.Scale`, `.WarningColor`, `.MaxEntries`, `.DefaultSeconds` and more | One time, at the start of your mod |
+| Show Arabic-Indic digits (١٢٣) everywhere | `Arabic.DefaultOptions.Digits = DigitStyle.ArabicIndic;` | One time, at the start of your mod |
 
 `SetArabic` fixes one text. `EnableAutoFix` fixes all text in the game, so you can write `label.text = "..."` like normal. Use only one of them for the same text.
 
@@ -69,6 +73,7 @@ public class MyMod : BaseUnityPlugin
 {
     void Start()
     {
+        NotificationSettings.Position = new Vector3(-0.3f, 0.4f, 1.4f);   // optional: move the notifications to the left
         Arabic.Notify("هلا والله، المود شغال", NotifyKind.Success);       // a message in front of the player
         Arabic.SetMessageOfTheDay("يا هلا والله فيكم", Color.green);      // your text on the message board
         // or, to fix all text in the game without changing your code: Arabic.EnableAutoFix();
@@ -82,10 +87,10 @@ public class MyMod : BaseUnityPlugin
 }
 ```
 
-Every call has a short comment in `Arabic.cs` that says what it does.
+Every call has a short comment in `Arabic.cs` and `Notifications.cs` that says what it does.
 
 ## Licence
 
 MIT, see [LICENSE](LICENSE). Copyright (c) 2026 Musaed.
 
-The font inside is Noto Sans Arabic. It keeps its own licence (SIL Open Font License 1.1, see [Fonts/OFL.txt](Fonts/OFL.txt)).
+The font inside is Noto Sans Arabic. It keeps its own licence (SIL Open Font License 1.1, see [Fonts/OFL.txt](Fonts/OFL.txt)). Both licence texts are inside the DLL, and the first run writes them next to the font in `BepInEx\cache\GorillaHurouf`, so the DLL alone is enough to share.

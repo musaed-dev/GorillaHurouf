@@ -27,7 +27,25 @@ namespace GorillaHurouf
 
         /// <summary>Text a left-to-right renderer draws correctly: joined letters, display order, mixed English and digits kept right.
         /// Text without Arabic letters comes back unchanged, and fixed text is left alone if fixed again.</summary>
-        public static string Fix(string text, ShapeOptions options = null) { return ArabicShaper.Shape(text, options); }
+        public static string Fix(string text, ShapeOptions options = null) { return ArabicShaper.Shape(text, options ?? defaultOptions); }
+
+        static ShapeOptions defaultOptions = new ShapeOptions();
+
+        /// <summary>The shaping options used whenever a call is given none: <see cref="Fix"/>, <see cref="Wrap"/>, <see cref="SetArabic(TMP_Text, string, ShapeOptions)"/>,
+        /// auto-fix, notifications and the message-of-the-day board. Change a field (<c>Arabic.DefaultOptions.Digits = DigitStyle.ArabicIndic;</c>) or replace the object;
+        /// null puts the built-in defaults back. Text already drawn is not shaped again until it changes.</summary>
+        public static ShapeOptions DefaultOptions
+        {
+            get { return defaultOptions; }
+            set { defaultOptions = value ?? new ShapeOptions(); }
+        }
+
+        // The default options with one direction, for the places that must force it (notifications are always right to left for Arabic).
+        internal static ShapeOptions DefaultWith(TextDirection direction)
+        {
+            ShapeOptions d = defaultOptions;
+            return new ShapeOptions { Direction = direction, Digits = d.Digits, KeepDiacritics = d.KeepDiacritics, RichText = d.RichText };
+        }
 
         /// <summary>True if the text has any Arabic letters (fixed or not).</summary>
         public static bool IsArabic(string text) { return ArabicShaper.ContainsArabic(text); }
@@ -56,7 +74,7 @@ namespace GorillaHurouf
                     if (fontAsset.material != null) fontAsset.material.hideFlags = HideFlags.DontUnloadUnusedAsset;
                     if (fontAsset.atlasTextures != null)
                         foreach (Texture2D t in fontAsset.atlasTextures) if (t != null) t.hideFlags = HideFlags.DontUnloadUnusedAsset;
-                    Log.LogInfo("Arabic font ready (" + fontAsset.atlasPopulationMode + ")");
+                    Log.LogDebug("Arabic font ready (" + fontAsset.atlasPopulationMode + ")");
                 }
                 catch (Exception e) { Log.LogError("The Arabic font failed: " + e); fontAsset = null; }
                 return fontAsset;
@@ -82,7 +100,7 @@ namespace GorillaHurouf
                 if (gameFont == null)
                     foreach (TMP_FontAsset f in Resources.FindObjectsOfTypeAll<TMP_FontAsset>())
                         if (f != null && f != fontAsset && f.HasCharacter('A') && f.HasCharacter('(')) { gameFont = f; break; }
-                Log.LogInfo("Game font for notifications: " + (gameFont != null ? gameFont.name : "none found, using the Arabic font only"));
+                Log.LogDebug("Game font for notifications: " + (gameFont != null ? gameFont.name : "none found, using the Arabic font only"));
                 return gameFont;
             }
         }
@@ -118,24 +136,16 @@ namespace GorillaHurouf
         /// <summary>Shows a notification in front of the player's view. The text is wrapped and fixed for Arabic; repeats are counted (×2).
         /// It queues, so it is safe to call before the game has finished loading.</summary>
         /// <param name="source">Optional name shown in front, such as your mod's name: "[Source] text".</param>
-        public static void Notify(string text, NotifyKind kind = NotifyKind.Info, float seconds = 4f, string source = null)
+        public static void Notify(string text, NotifyKind kind = NotifyKind.Info, float seconds = -1f, string source = null)
         {
-            Color c;
-            switch (kind)
-            {
-                case NotifyKind.Success: c = new Color(0.45f, 0.90f, 0.50f); break;
-                case NotifyKind.Warning: c = new Color(1.00f, 0.80f, 0.30f); break;
-                case NotifyKind.Error: c = new Color(1.00f, 0.40f, 0.40f); break;
-                default: c = Color.white; break;
-            }
-            Notify(text, c, seconds, source);
+            Notify(text, NotificationSettings.ColorOf(kind), seconds, source);
         }
 
-        /// <summary>Same with your own colour.</summary>
-        public static void Notify(string text, Color color, float seconds = 4f, string source = null)
+        /// <summary>Same with your own colour. Seconds below 0 (the default) mean <see cref="NotificationSettings.DefaultSeconds"/>.</summary>
+        public static void Notify(string text, Color color, float seconds = -1f, string source = null)
         {
             if (string.IsNullOrEmpty(text)) return;
-            NotificationPanel.Enqueue(text, source, color, Mathf.Max(0.5f, seconds));
+            NotificationPanel.Enqueue(text, source, color, Mathf.Max(0.5f, seconds < 0f ? NotificationSettings.DefaultSeconds : seconds));
         }
 
         /// <summary>Breaks the text into lines that fit <paramref name="maxWidth"/> (in the text's own units) and fixes them for Arabic.
@@ -144,7 +154,7 @@ namespace GorillaHurouf
         public static string Wrap(TMP_Text text, string value, float maxWidth, ShapeOptions options = null)
         {
             if (text == null) return value;
-            return ArabicShaper.Wrap(value, s => text.GetPreferredValues(s).x, maxWidth, options);
+            return ArabicShaper.Wrap(value, s => text.GetPreferredValues(s).x, maxWidth, options ?? defaultOptions);
         }
 
         // The pieces auto-fix and the message-of-the-day board share. Wrapping is on the logical text and only when the text wraps itself at a fixed size
@@ -218,6 +228,11 @@ namespace GorillaHurouf
         /// <summary>Puts the game's own message of the day (and its colour) back on the board.</summary>
         public static void ClearMessageOfTheDay() { MessageOfTheDay.Set(null, null); }
 
+        /// <summary>Changes the heading above the message-of-the-day board ("MESSAGE OF THE DAY") to your own text, fixed for Arabic, in the given colour (none keeps the game's).
+        /// Local, like <see cref="SetMessageOfTheDay"/>; the library puts it back when the game rewrites the heading (a language change). Pass null or "" to give the game's heading back.
+        /// It works on its own: you can change the title and leave the message alone.</summary>
+        public static void SetMessageOfTheDayTitle(string title, Color? color = null) { MessageOfTheDay.SetTitle(title, color); }
+
         /// <summary>Tells auto-fix to leave this text alone (or, with <c>false</c>, to fix it again). The text is shown as its owner set it, even if it has Arabic.
         /// A text that is already drawn changes the next time it is rebuilt. <see cref="SetArabic(TMP_Text, string, ShapeOptions)"/> still works on it.</summary>
         public static void SkipAutoFix(TMP_Text text, bool skip = true) { AutoFix.Skip(text, skip); }
@@ -269,20 +284,34 @@ namespace GorillaHurouf
         static void Destroy(UnityEngine.Object o) { if (o != null) UnityEngine.Object.Destroy(o); }
 
         // TextMeshPro loads a font from a file path, so the embedded font is written to BepInEx's cache folder once.
+        // The licences of the library (MIT) and of the font (OFL 1.1) are written next to it, so a release can be the DLL alone.
         static string ExtractFont()
         {
             string dir = Path.Combine(Paths.CachePath, PluginInfo.NAME);
             string path = Path.Combine(dir, "NotoSansArabic-Regular.ttf");
-            using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream(FontResource))
+            if (!WriteResource(FontResource, path)) throw new FileNotFoundException("The font is not embedded: " + FontResource);
+            try
             {
-                if (s == null) throw new FileNotFoundException("The font is not embedded: " + FontResource);
+                if (!WriteResource("GorillaHurouf.LICENSE.txt", Path.Combine(dir, "LICENSE.txt")) || !WriteResource("GorillaHurouf.OFL.txt", Path.Combine(dir, "OFL.txt")))
+                    Log.LogWarning("The licence texts are not embedded in this build.");
+            }
+            catch (Exception e) { Log.LogWarning("Could not write the licence files next to the font: " + e.Message); }
+            return path;
+        }
+
+        // Writes an embedded resource to a file unless the file is already there with the same size. False if there is no such resource.
+        static bool WriteResource(string resource, string path)
+        {
+            using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream(resource))
+            {
+                if (s == null) return false;
                 if (!File.Exists(path) || new FileInfo(path).Length != s.Length)
                 {
-                    Directory.CreateDirectory(dir);
+                    Directory.CreateDirectory(Path.GetDirectoryName(path));
                     using (FileStream f = File.Create(path)) s.CopyTo(f);
                 }
+                return true;
             }
-            return path;
         }
     }
 }

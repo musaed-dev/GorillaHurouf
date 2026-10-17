@@ -67,7 +67,7 @@ namespace GorillaHurouf
             }
             harmony = h;
             failed = false;
-            Arabic.Log.LogInfo("Auto-fix is on");
+            Arabic.Log.LogDebug("Auto-fix is on");
         }
 
         internal static void Disable()
@@ -76,7 +76,7 @@ namespace GorillaHurouf
             harmony.UnpatchSelf();   // ScriptEngine does not clean up after a reload, so Plugin.OnDestroy comes here
             harmony = null;
             states = new ConditionalWeakTable<TMP_Text, State>();
-            Arabic.Log.LogInfo("Auto-fix is off");
+            Arabic.Log.LogDebug("Auto-fix is off");
         }
 
         // Runs for every TextMeshPro text each time its mesh is built, so the common case (no Arabic) is one scan of the string and nothing else.

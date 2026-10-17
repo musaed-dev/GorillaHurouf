@@ -13,8 +13,8 @@
     <LangVersion>7.3</LangVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
-    <!-- Override on the command line with /p:GamePath=... -->
-    <GamePath Condition="'$(GamePath)' == ''">D:\New folder\steamapps\common\Gorilla Tag</GamePath>
+    <!-- Required: build with /p:GamePath="<your Gorilla Tag folder>", or set a GamePath environment variable. -->
+    <GamePath Condition="'$(GamePath)' == ''"></GamePath>
     <ManagedPath>$(GamePath)\Gorilla Tag_Data\Managed</ManagedPath>
     <BepInExCorePath>$(GamePath)\BepInEx\core</BepInExCorePath>
     <ScriptsPath>$(GamePath)\BepInEx\scripts</ScriptsPath>
@@ -24,7 +24,7 @@
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE;HUROUF_DEMO</DefineConstants>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
@@ -36,6 +36,17 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+  <!-- Test and demo code (src\Demo.cs) is opt-in: /p:Demo=true shows every feature in front of the camera, /p:Demo=vr is the headset version.
+       No configuration turns it on by itself, and a Release build refuses it, so it cannot end up in a released DLL. -->
+  <PropertyGroup Condition=" '$(Demo)' == 'true' ">
+    <DefineConstants>$(DefineConstants);HUROUF_DEMO</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Demo)' == 'vr' ">
+    <DefineConstants>$(DefineConstants);HUROUF_DEMO;HUROUF_VR</DefineConstants>
+  </PropertyGroup>
+  <Target Name="NoDemoInRelease" BeforeTargets="CoreCompile" Condition=" '$(Configuration)' == 'Release' And '$(Demo)' != '' ">
+    <Error Text="A Release build must not contain the demo: remove /p:Demo." />
+  </Target>
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -69,6 +80,9 @@
   <ItemGroup>
     <!-- Noto Sans Arabic Regular (unhinted), SIL Open Font License 1.1, from notofonts/arabic release NotoSansArabic-v2.013. Keep OFL.txt with it. -->
     <EmbeddedResource Include="Fonts\NotoSansArabic-Regular.ttf"><LogicalName>GorillaHurouf.NotoSansArabic-Regular.ttf</LogicalName></EmbeddedResource>
+    <!-- The licence texts travel inside the DLL (and are written next to the font on first use), so a release can be the DLL alone. -->
+    <EmbeddedResource Include="LICENSE"><LogicalName>GorillaHurouf.LICENSE.txt</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="Fonts\OFL.txt"><LogicalName>GorillaHurouf.OFL.txt</LogicalName></EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- Copies the DLL and PDB into BepInEx\scripts, where ScriptEngine reloads them while the game runs (dev loop only).

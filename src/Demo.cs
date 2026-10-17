@@ -83,6 +83,8 @@ namespace GorillaHurouf
             LogLayers();
             yield return new WaitForSeconds(5f);
             Arabic.Log.LogInfo("demo: notifications live after the 4 s one expired=" + NotificationPanel.LiveCount + " (expect 5)");
+            yield return CustomizeChecks();
+            yield return DeadRootChecks();
             AutoFixChecks(game);
             AutoFixOptionChecks(game);
             List<TMP_Text> motdBoxes = MotdDiscovery();
@@ -123,6 +125,49 @@ namespace GorillaHurouf
             for (int i = 0; i < legacy.Count; i++) if (legacy[i] != null && !Mathf.Approximately(legacy[i].preferredWidth, onWidth[i])) legacyChanged++;
             Arabic.Log.LogInfo("demo: autofix on the game's own texts: " + tmps.Count + " TextMeshPro and " + legacy.Count + " legacy Text | hook ran " + natural + " times on its own in 5 s and " + forced
                 + " times when rebuilt (expect more than 0) | shaped " + shapedWhileOn + " (expect 0) | drawn differently with it off: TMP " + tmpChanged + ", legacy " + legacyChanged + " (expect 0)");
+        }
+
+        // A scene unload destroys the notification root and its texts while entries are live: the panel must drop them, keep working, and raise no error
+        // (it used to throw every frame, and at expiry, until the game closed). The control: the entries really were live before the root was destroyed.
+        IEnumerator DeadRootChecks()
+        {
+            Arabic.Notify("Dead root check", NotifyKind.Info, 2f);
+            yield return new WaitForSeconds(0.5f);
+            int before = NotificationPanel.LiveCount;
+            GameObject panel = GameObject.Find("GorillaHurouf_Notifications");
+            if (panel != null) Destroy(panel);
+            yield return new WaitForSeconds(3f);   // past the 2 s expiry of the notification that was in it
+            Arabic.Notify("After the dead root", NotifyKind.Info, 1f);
+            yield return new WaitForSeconds(0.5f);
+            Arabic.Log.LogInfo("demo: dead notification root: live before " + before + " (control: expect more than 0) | live after " + NotificationPanel.LiveCount + " (expect 1, the new one)"
+                + " | new root made " + (GameObject.Find("GorillaHurouf_Notifications") != null) + " | error flagged " + NotificationPanel.Failed + " (expect False)");
+        }
+
+        // The settings: a changed value must show, and the old value comes back afterwards. Controls: digits are Western until set, and the default colour is not magenta.
+        IEnumerator CustomizeChecks()
+        {
+            ShapeOptions d = Arabic.DefaultOptions;
+            string before = Arabic.Fix("هلا 123");
+            d.Digits = DigitStyle.ArabicIndic;
+            string indic = Arabic.Fix("هلا 123");
+            d.Digits = DigitStyle.Keep;
+            Arabic.Log.LogInfo("demo: default options: digits Western by default " + before.Contains("123") + " | Arabic-Indic once set " + (indic.Contains("١") && !indic.Contains("1"))
+                + " | back to Western " + Arabic.Fix("هلا 123").Contains("123") + " | default warning colour is not magenta " + (NotificationSettings.WarningColor != Color.magenta));
+
+            Vector3 position = NotificationSettings.Position; Color warning = NotificationSettings.WarningColor; float scale = NotificationSettings.Scale; int max = NotificationSettings.MaxEntries;
+            NotificationSettings.Position = new Vector3(-0.3f, 0.1f, 1.0f);
+            NotificationSettings.WarningColor = Color.magenta;
+            NotificationSettings.Scale = 0.02f;
+            NotificationSettings.MaxEntries = 2;
+            Arabic.Notify("Customize check", NotifyKind.Warning, 3f);
+            yield return new WaitForSeconds(0.5f);
+            GameObject panel = GameObject.Find("GorillaHurouf_Notifications");
+            TextMeshPro newest = panel != null ? panel.GetComponentsInChildren<TextMeshPro>().FirstOrDefault(t => t.text.Contains("Customize")) : null;
+            bool at = panel != null && (panel.transform.position - Camera.main.transform.TransformPoint(NotificationSettings.Position)).sqrMagnitude < 0.0001f;
+            bool magenta = newest != null && newest.color.r > 0.99f && newest.color.g < 0.01f && newest.color.b > 0.99f;
+            Arabic.Log.LogInfo("demo: notification settings: position " + at + " | colour " + magenta + " | scale " + (newest != null && Mathf.Approximately(newest.transform.localScale.x, 0.02f))
+                + " | live " + NotificationPanel.LiveCount + " (expect 2)");
+            NotificationSettings.Position = position; NotificationSettings.WarningColor = warning; NotificationSettings.Scale = scale; NotificationSettings.MaxEntries = max;
         }
 
         // step 5: texts set the plain way (.text = ...), with and without auto-fix. Every line says "ok" or "WRONG"; a control must come out as "differs".
@@ -279,11 +324,21 @@ namespace GorillaHurouf
                         + " rich=" + box.richText + " size=" + box.fontSize + " autosize=" + box.enableAutoSizing + " color=" + box.color + " font=" + (box.font != null ? box.font.name : "none")
                         + " | text(" + text.Length + ")='" + (text.Length > 70 ? text.Substring(0, 70) : text).Replace("\n", "\\n") + "'"));
             }
+            // the heading above each board: every text in the scene that says "message of the day", where it is and what is on it
+            foreach (TMP_Text t in Resources.FindObjectsOfTypeAll<TMP_Text>())
+            {
+                if (t == null || !t.gameObject.scene.IsValid() || t.text.ToUpperInvariant().IndexOf("MESSAGE OF THE DAY") < 0) continue;
+                string p = t.name;
+                for (Transform q = t.transform.parent; q != null; q = q.parent) p = q.name + "/" + p;
+                Arabic.Log.LogInfo("demo: heading '" + p + "' = '" + t.text.Replace("\n", "\\n") + "' active=" + t.gameObject.activeInHierarchy + " world=" + t.transform.position.ToString("F2")
+                    + " color=" + t.color + " font=" + (t.font != null ? t.font.name : "none") + " | components: " + string.Join(",", t.GetComponents<Component>().Select(c => c == null ? "null" : c.GetType().Name).ToArray()));
+            }
             Arabic.Log.LogInfo("demo: boards found=" + found + ", with the MOTD key " + motd.Count);
             return motd;
         }
 
-        const string MotdText = "تنبيه: فيه صيانة بكرة بعد صلاة العصر، يعطيكم العافية على تفهمكم";
+        const string MotdTitle = "رسالة اليوم";
+        const string MotdText ="تنبيه: فيه صيانة بكرة بعد صلاة العصر، يعطيكم العافية على تفهمكم";
 
         // The message-of-the-day board: our text and colour on it, put back when the game rewrites it, and the game's own text back after Clear.
         IEnumerator MotdChecks(List<TMP_Text> found)
@@ -302,11 +357,22 @@ namespace GorillaHurouf
             foreach (TMP_Text b in managed) { b.text = gameText.ContainsKey(b) ? gameText[b] : "GAME TEXT"; b.color = Color.magenta; }
             yield return new WaitForSeconds(0.3f);
             Arabic.Log.LogInfo("demo: motd after the game rewrote it: " + MotdState(managed, Color.green));
+            // the heading above the board: ours, put back after the game's LocalizationTextSyncer rewrites it, the game's own back after a clear
+            Arabic.SetMessageOfTheDayTitle(MotdTitle, Color.cyan);
+            yield return new WaitForSeconds(1f);
+            List<TMP_Text> heads = MessageOfTheDay.Headings;
+            string wantTitle = Arabic.Fix(MotdTitle);
+            Arabic.Log.LogInfo("demo: motd title on " + heads.Count(h => h.text == wantTitle) + " of " + heads.Count + " headings (expect 3 of 3), cyan on " + heads.Count(h => h.color.r < 0.01f && h.color.g > 0.99f) + " (expect 3)");
+            foreach (TMP_Text h in heads) h.text = "MESSAGE OF THE DAY";
+            yield return new WaitForSeconds(0.3f);
+            Arabic.Log.LogInfo("demo: motd title after the game rewrote it: ours on " + heads.Count(h => h.text == wantTitle) + " of " + heads.Count + " (expect 3 of 3)");
             Arabic.Log.LogInfo("demo: motd up");
             yield return new WaitForSeconds(25f);   // time to stand in front of the board for a screenshot
 
             Arabic.ClearMessageOfTheDay();
+            Arabic.SetMessageOfTheDayTitle(null);
             yield return new WaitForSeconds(0.5f);
+            Arabic.Log.LogInfo("demo: motd title cleared: the game's heading is back on " + heads.Count(h => h != null && h.text == "MESSAGE OF THE DAY" && h.color.r > 0.99f && h.color.g > 0.99f && h.color.b > 0.99f) + " of " + heads.Count + " (expect 3 of 3)");
             int back = 0;
             foreach (TMP_Text b in managed) if (b != null && gameText.ContainsKey(b) && b.text == gameText[b] && b.color == gameColor[b]) back++;
             Arabic.Log.LogInfo("demo: motd cleared: the game's own text and colour are back on " + back + " of " + managed.Count + " boards (expect all)");
@@ -376,6 +442,122 @@ namespace GorillaHurouf
                     foreach (int layer in layers.Keys)
                         Arabic.Log.LogInfo("demo: camera '" + cm.name + "' draws layer " + layer + " = " + ((cm.cullingMask >> layer & 1) == 1));
         }
+
+#if HUROUF_VR
+        // For wearing a headset (build with HUROUF_VR): waits until the player has loaded, then puts every feature in the world
+        // 2 m ahead (not stuck to the head), turns auto-fix on and leaves it on, keeps the message of the day, and sends a notification every 25 s.
+        internal class VrDemo : MonoBehaviour
+        {
+            const string PlayerPath = "Player Objects/Player VR Controller/GorillaPlayer";
+            GameObject root;
+            TMP_FontAsset game;
+
+            void OnDestroy() { if (root != null) Destroy(root); }
+
+            IEnumerator Start()
+            {
+                // the player rig (found by its scene path: the library does not reference the game's assembly) exists once the world has loaded
+                while (Camera.main == null || GameObject.Find(PlayerPath) == null) yield return new WaitForSeconds(0.5f);
+                Arabic.Log.LogInfo("vr: player loaded at " + Time.realtimeSinceStartup.ToString("0") + " s, starting in 3 s");
+                yield return new WaitForSeconds(3f);
+                Transform cam = Camera.main.transform;
+                game = Arabic.GameFont;
+                Arabic.EnableAutoFix();
+
+                Vector3 fwd = Vector3.ProjectOnPlane(cam.forward, Vector3.up);
+                fwd = fwd.sqrMagnitude < 0.01f ? Vector3.forward : fwd.normalized;
+                root = new GameObject("GorillaHurouf_VrDemo");
+                // left and a little low: the notifications sit up and to the right of the head
+                root.transform.position = cam.position + fwd * 2f - Vector3.Cross(Vector3.up, fwd) * 0.5f + Vector3.down * 0.1f;
+                root.transform.rotation = Quaternion.LookRotation(fwd);
+
+                Row("SetArabic", 0.45f).SetArabic(Welcome);
+                Row("mixed, brackets, digits", 0.31f).SetArabic(Mixed);
+                Row("auto-fix: plain .text =", 0.17f).text = Welcome;
+                Row("auto-fix: with tags", 0.03f).text = "<color=red>" + Mixed + "</color>";
+                Translator tr = Arabic.Translator("VrDemo");
+                tr.LoadJson("{ \"hello\": { \"en\": \"Hello {0}\", \"ar\": \"هلا يا {0}\" } }");
+                Arabic.Language = "ar";
+                Row("translator (ar)", -0.11f).SetArabic(tr.T("hello", "Hex"));
+                Arabic.Language = null;
+                TextMeshPro hijriRow = Row("Hijri today", -0.25f);
+                string hijri = Arabic.Hijri(null, true);
+                hijriRow.SetArabic(hijri);
+                hijriRow.ForceMeshUpdate();
+                Arabic.Log.LogInfo("vr: hijri row drawn exactly once-fixed (auto-fix on) " + (hijriRow.GetParsedText() == Arabic.Fix(hijri)) + " | '" + hijri + "'");
+                TextMeshPro control = Row("control: raw, skipped (must look broken)", -0.39f);
+                Arabic.EnableFor(control); Arabic.SkipAutoFix(control); control.text = Welcome;
+                LegacyRow("auto-fix: legacy Text", -0.53f).text = Welcome;
+                TextMeshPro wrap = Row("auto-fix: wrapped, narrow box", -0.67f);
+                wrap.textWrappingMode = TextWrappingModes.Normal;
+                wrap.alignment = TextAlignmentOptions.TopRight;
+                wrap.rectTransform.sizeDelta = new Vector2(40f, 10f);
+                wrap.text = LongWarning;
+
+                Arabic.Notify(Saved, NotifyKind.Success, 120f, "Hurouf");
+                Arabic.Notify(LongWarning, NotifyKind.Warning, 120f);
+                Arabic.Notify(Joined, NotifyKind.Info, 120f, "Room");
+                Arabic.Notify("Plain English notification that is long enough to need wrapping onto a second line", NotifyKind.Error, 120f);
+                Arabic.Notify(Short, Color.cyan, 120f);
+                Arabic.Notify(Short, Color.cyan, 120f);
+                Arabic.SetMessageOfTheDay(MotdText, Color.green);
+                Arabic.SetMessageOfTheDayTitle(MotdTitle, Color.green);
+                Arabic.Log.LogInfo("vr: up (rows 2 m ahead, auto-fix on, message of the day set, notifications)");
+
+                string[] more = { Saved, Joined, Brief };
+                for (int i = 0; ; i++)
+                {
+                    yield return new WaitForSeconds(25f);
+                    Arabic.Notify(more[i % more.Length], NotifyKind.Info, 8f, "Hurouf");
+                }
+            }
+
+            TextMeshPro Row(string label, float y)
+            {
+                TextMeshPro l = Make("label", -1.0f, y, 28, TextAlignmentOptions.Left, 90f);
+                l.color = new Color(0.7f, 0.7f, 0.7f);
+                l.text = label;
+                return Make("row", 0.25f, y, 36, TextAlignmentOptions.Center, 80f);
+            }
+
+            TextMeshPro Make(string name, float x, float y, float size, TextAlignmentOptions align, float width)
+            {
+                var go = new GameObject(name);
+                go.transform.SetParent(root.transform, false);
+                go.transform.localPosition = new Vector3(x, y, 0f);
+                go.transform.localScale = Vector3.one * 0.01f;
+                var tmp = go.AddComponent<TextMeshPro>();
+                if (game != null) tmp.font = game;
+                tmp.fontSize = size;
+                tmp.alignment = align;
+                tmp.textWrappingMode = TextWrappingModes.NoWrap;
+                tmp.rectTransform.sizeDelta = new Vector2(width, 10f);
+                return tmp;
+            }
+
+            Text LegacyRow(string label, float y)
+            {
+                TextMeshPro l = Make("label", -1.0f, y, 28, TextAlignmentOptions.Left, 90f);
+                l.color = new Color(0.7f, 0.7f, 0.7f);
+                l.text = label;
+                var canvasGo = new GameObject("legacy");
+                canvasGo.transform.SetParent(root.transform, false);
+                canvasGo.transform.localPosition = new Vector3(0.25f, y, 0f);
+                canvasGo.transform.localScale = Vector3.one * 0.002f;
+                canvasGo.AddComponent<Canvas>().renderMode = RenderMode.WorldSpace;
+                ((RectTransform)canvasGo.transform).sizeDelta = new Vector2(400f, 40f);
+                var go = new GameObject("Text");
+                go.transform.SetParent(canvasGo.transform, false);
+                Text t = go.AddComponent<Text>();
+                t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                t.fontSize = 24;
+                t.alignment = TextAnchor.MiddleCenter;
+                t.rectTransform.sizeDelta = new Vector2(400f, 40f);
+                t.horizontalOverflow = HorizontalWrapMode.Overflow;
+                return t;
+            }
+        }
+#endif
 
         // Which font asset drew the visible characters of this text.
         static void Report(TextMeshPro tmp)
