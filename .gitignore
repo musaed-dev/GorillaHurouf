@@ -1,0 +1,6 @@
+# build output and editor files
+bin/
+obj/
+.vs/
+*.user
+

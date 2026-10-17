@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Old-style project: every new .cs file needs a <Compile Include> line below. -->
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{6F1B7C52-3D0A-4E8B-9A41-C5E2D7B08A13}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>GorillaHurouf</RootNamespace>
+    <AssemblyName>GorillaHurouf</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <LangVersion>7.3</LangVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+    <!-- Override on the command line with /p:GamePath=... -->
+    <GamePath Condition="'$(GamePath)' == ''">D:\New folder\steamapps\common\Gorilla Tag</GamePath>
+    <ManagedPath>$(GamePath)\Gorilla Tag_Data\Managed</ManagedPath>
+    <BepInExCorePath>$(GamePath)\BepInEx\core</BepInExCorePath>
+    <ScriptsPath>$(GamePath)\BepInEx\scripts</ScriptsPath>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;HUROUF_DEMO</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- No Assembly-CSharp on purpose: the library only needs Unity and TextMeshPro, so a game update cannot break it. -->
+    <Reference Include="BepInEx"><HintPath>$(BepInExCorePath)\BepInEx.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(BepInExCorePath)\0Harmony.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(ManagedPath)\UnityEngine.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(ManagedPath)\UnityEngine.CoreModule.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(ManagedPath)\UnityEngine.UI.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="UnityEngine.UIModule"><HintPath>$(ManagedPath)\UnityEngine.UIModule.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="Unity.TextMeshPro"><HintPath>$(ManagedPath)\Unity.TextMeshPro.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="UnityEngine.TextCoreFontEngineModule"><HintPath>$(ManagedPath)\UnityEngine.TextCoreFontEngineModule.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="UnityEngine.TextCoreTextEngineModule"><HintPath>$(ManagedPath)\UnityEngine.TextCoreTextEngineModule.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="UnityEngine.TextRenderingModule"><HintPath>$(ManagedPath)\UnityEngine.TextRenderingModule.dll</HintPath><Private>False</Private></Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="src\Arabic.cs" />
+    <Compile Include="src\ArabicShaper.cs" />
+    <Compile Include="src\AutoFix.cs" />
+    <Compile Include="src\AutoFix.LegacyText.cs" />
+    <Compile Include="src\Demo.cs" />
+    <Compile Include="src\Hijri.cs" />
+    <Compile Include="src\MessageOfTheDay.cs" />
+    <Compile Include="src\Notifications.cs" />
+    <Compile Include="src\Plugin.cs" />
+    <Compile Include="src\PluginInfo.cs" />
+    <Compile Include="src\Translator.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Noto Sans Arabic Regular (unhinted), SIL Open Font License 1.1, from notofonts/arabic release NotoSansArabic-v2.013. Keep OFL.txt with it. -->
+    <EmbeddedResource Include="Fonts\NotoSansArabic-Regular.ttf"><LogicalName>GorillaHurouf.NotoSansArabic-Regular.ttf</LogicalName></EmbeddedResource>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- Copies the DLL and PDB into BepInEx\scripts, where ScriptEngine reloads them while the game runs (dev loop only).
+       Skipped in CI or if the game is missing; ContinueOnError so a locked DLL warns instead of failing. -->
+  <Target Name="CopyToScripts" AfterTargets="Build" Condition="'$(CI)' != 'TRUE' And Exists('$(ScriptsPath)')">
+    <Copy SourceFiles="$(TargetPath);$(TargetDir)$(TargetName).pdb" DestinationFolder="$(ScriptsPath)" ContinueOnError="true" />
+  </Target>
+</Project>
