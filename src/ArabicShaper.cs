@@ -143,8 +143,10 @@ namespace GorillaHurouf
         public static bool NeedsShaping(string text)
         {
             if (text == null) return false;
+            // Only letters the table shapes count. The tatweel (as in the Hijri "هـ") and letters without forms are still in the text after shaping,
+            // so counting them made fixed text look unfixed, and shaping it a second time flipped the line back.
             for (int i = 0; i < text.Length; i++)
-                if (IsArabicLetter(text[i])) return true;
+                if (text[i] != 'ـ' && Forms.ContainsKey(text[i])) return true;
             return false;
         }
 

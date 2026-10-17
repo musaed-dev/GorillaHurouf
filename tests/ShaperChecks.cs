@@ -49,6 +49,14 @@ static class ShaperChecks
         Check("wrap keeps a text that fits on one line", ArabicShaper.Wrap(Marhaba, ruler, 50), V);
         Check("alpha stays on (it has no closing tag)", ArabicShaper.Shape("<alpha=#80>" + Marhaba), "<alpha=#80>" + V);
         Check("alpha is reset where the order moves out of it", ArabicShaper.Shape(Marhaba + " <alpha=#80>Hex"), "<alpha=#80>Hex<alpha=#FF> " + V);
+        // fixed text must be left alone, even with a tatweel in it (the Hijri "هـ" has one): shaping it again used to flip the line back
+        string hijriFixed = ArabicShaper.Shape(HijriDate.Format(new DateTime(2025, 3, 1), true));
+        Check("a fixed Hijri date (tatweel in هـ) is left alone", ArabicShaper.Shape(hijriFixed), hijriFixed);
+        string tatweelFixed = ArabicShaper.Shape("كـــتاب");
+        Check("a fixed word with a tatweel is left alone", ArabicShaper.Shape(tatweelFixed), tatweelFixed);
+        Check("a tatweel alone needs no shaping", ArabicShaper.NeedsShaping("ـــ") ? "yes" : "no", "no");
+        Check("control: unfixed Arabic still needs shaping", ArabicShaper.NeedsShaping("كتاب") ? "yes" : "no", "yes");
+        Check("control: the tatweel word really is shaped the first time", tatweelFixed != "كـــتاب" ? "yes" : "no", "yes");
         Check("a stray </alpha> is plain text, not a tag", ArabicShaper.Shape("x" + Marhaba + "</alpha>").Contains("</alpha>") ? "kept" : "dropped", "kept");
         Check("a diacritic stays after its letter", ArabicShaper.Shape("بَ"), "ﺏَ");
         Check("diacritics can be removed", ArabicShaper.Shape("بَ", new ShapeOptions { KeepDiacritics = false }), "ﺏ");
